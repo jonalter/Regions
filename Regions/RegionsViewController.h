@@ -54,6 +54,9 @@
     CLLocation *lastSavedLocation;
     BOOL smallRegionsAdded;
     BOOL addingSmallRegions;
+    
+    int regionCountSmall;
+    int regionCountLarge;
 }
 
 @property (nonatomic, retain) IBOutlet MKMapView *regionsMapView;

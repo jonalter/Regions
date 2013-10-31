@@ -82,12 +82,18 @@
     [self userLogin];
     
     regionCount = 0;
+    regionCountSmall = 0;
+    regionCountLarge = 0;
     lastSavedLocation = nil;
     smallRegionsAdded = NO;
     addingSmallRegions = NO;
     self.annotations = nil;
     self.smallRegions = nil;
     self.largeRegions = nil;
+    
+    [UIDevice currentDevice].batteryMonitoringEnabled = YES;
+//    [self updateBatteryLevel];
+//    [NSTimer scheduledTimerWithTimeInterval:60 target:self selector:@selector(updateBatteryLevel) userInfo:nil repeats:YES];
 	
 	// Create empty array to add region events to.
 	updateEvents = [[NSMutableArray alloc] initWithCapacity:0];
@@ -96,10 +102,13 @@
 	locationManager = [[CLLocationManager alloc] init];
 	locationManager.delegate = self;
 	locationManager.distanceFilter = kCLLocationAccuracyHundredMeters;
+    // BUGBUG: turned up accuracy
 	locationManager.desiredAccuracy = kCLLocationAccuracyBest;
+//    locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation;
 	
 	// Start updating location changes.
 	[locationManager startUpdatingLocation];
+//    [locationManager startMonitoringSignificantLocationChanges];
 }
 
 
@@ -254,12 +263,15 @@
 #pragma mark - CLLocationManagerDelegate
 
 - (void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error {
-	NSLog(@"didFailWithError: %@", error);
+	FLog(@"didFailWithError: %@", error);
 }
 
 
 - (void)locationManager:(CLLocationManager *)manager didUpdateToLocation:(CLLocation *)newLocation fromLocation:(CLLocation *)oldLocation {
-//	NSLog(@"didUpdateToLocation %@ from %@", newLocation, oldLocation);
+//	FLog(@"didUpdateToLocation %@ from %@", newLocation, oldLocation);
+    
+    NSString *event = [self logEventType:@"UPDATE" eventCoords:newLocation.coordinate currentLocation:oldLocation region:nil];
+    FLog(event);
 	
 	// Work around a bug in MapKit where user location is not initially zoomed to.
 	if (oldLocation == nil) {
@@ -268,13 +280,15 @@
 		[regionsMapView setRegion:userLocation animated:YES];
 	}
     
-    NSArray *regions = [[locationManager monitoredRegions] allObjects];
-	for (int i = 0; i < [regions count]; i++) {
-		CLRegion *region = [regions objectAtIndex:i];
-		if ([region containsCoordinate:newLocation.coordinate] && !smallRegionsAdded) {
-            [self getPlacesAroundCoordinate:region.center withTag:@"small"];
-        }
-	}
+    // BUGBUG: re-add for tracking
+//    NSArray *regions = [[locationManager monitoredRegions] allObjects];
+//	for (int i = 0; i < [regions count]; i++) {
+//		CLRegion *region = [regions objectAtIndex:i];
+//		if ([region containsCoordinate:newLocation.coordinate] && !smallRegionsAdded) {
+//            FLog(@"Forcing small region refresh for large region: %@", region.identifier);
+//            [self getPlacesAroundCoordinate:region.center withTag:@"small"];
+//        }
+//	}
     
     
     
@@ -297,34 +311,64 @@
 
 
 - (void)locationManager:(CLLocationManager *)manager didEnterRegion:(CLRegion *)region  {
-	NSString *event = [NSString stringWithFormat:@"didEnterRegion %@ at %@", region.identifier, [NSDate date]];
-	
+    CLLocation *currentLocation = locationManager.location;
+    CLLocationCoordinate2D currentCoords = locationManager.location.coordinate;
+//    NSString *event = [NSString stringWithFormat:@"didEnterRegion %@ at %@", region.identifier, [NSDate date]];
+//	NSString *event = [NSString stringWithFormat:@"didEnterRegion %@ CURRENT LOCATION: %f, %f is in entered REGION: %@", region.identifier, currentCoords.latitude, currentCoords.longitude, [region containsCoordinate:currentCoords] ? @"true" : @"false"];
+    
+    NSString *event = [self logEventType:@"ENTER" eventCoords:region.center currentLocation:currentLocation region:region];
+    
 	[self updateWithEvent:event];
     
-    if ([region.identifier hasPrefix:@"L"]) {
-        // LARGE
-        // Pull small regions for this large region from ACS
-        [self getPlacesAroundCoordinate:region.center withTag:@"small"];
-    } else {
-        // SMALL
-        // Log to ACS
-        
-    }
+    // BUGBUG: re-add for tracking
+//    if ([region.identifier hasPrefix:@"L"]) {
+//        // LARGE
+//        // Pull small regions for this large region from ACS
+//        [self getPlacesAroundCoordinate:region.center withTag:@"small"];
+//    } else {
+//        // SMALL
+//        // Log to ACS
+//        
+//    }
 }
 
 
 - (void)locationManager:(CLLocationManager *)manager didExitRegion:(CLRegion *)region {
-	NSString *event = [NSString stringWithFormat:@"didExitRegion %@ at %@", region.identifier, [NSDate date]];
-	
+    CLLocation *currentLocation = locationManager.location;
+	CLLocationCoordinate2D currentCoords = locationManager.location.coordinate;
+//    NSString *event = [NSString stringWithFormat:@"didExitRegion %@ at %@", region.identifier, [NSDate date]];
+//	NSString *event = [NSString stringWithFormat:@"didExitRegion %@ CURRENT LOCATION: %f, %f is in exited REGION: %@", region.identifier, currentCoords.latitude, currentCoords.longitude, [region containsCoordinate:currentCoords] ? @"true" : @"false"];
+    
+    NSString *event = [self logEventType:@"EXIT" eventCoords:region.center currentLocation:currentLocation region:region];
+    
 	[self updateWithEvent:event];
     
-    if ([region.identifier hasPrefix:@"L"]) {
-        // LARGE
-        // pull large regions closest to current location
-        [self getPlacesAroundCoordinate:manager.location.coordinate withTag:@"large"];
-    }
+    // BUGBUG: re-add for tracking
+//    if ([region.identifier hasPrefix:@"L"]) {
+//        // LARGE
+//        // pull large regions closest to current location
+//        [self getPlacesAroundCoordinate:manager.location.coordinate withTag:@"large"];
+//    }
 }
 
+- (NSString*)logEventType:(NSString*)eventType eventCoords:(CLLocationCoordinate2D)eventCoords currentLocation:(CLLocation)currentLocation region:(CLRegion*)region
+{
+    // <timestamp1>, <timestamp2>, battery_level: <battery level>, event_type: <ENTER|EXIT|UPDATE>, latitude1: <latitude1>, longitude1: <longitude1>, latitude2: <latitude2>, longitude2: <longitude2>, model: <model string>
+    // Region Number, size, coords
+    
+    // FROM geolocation update
+//    coordinate
+//    altitude
+//    horizontalAccuracy
+//    timestamp
+    
+//    NSNumber *regionNumber =
+//    NSString *regionType = 
+    NSNumber *regionSize = [NSNumber numberWithFloat:region.radius*2.0];
+    
+    // need to add the rest of the args
+    return [NSString stringWithFormat:@"%@, %@, battery_level: %@, event_type: %@, latitude1: %f, longitude1: %f, latitude2: %f, longitude2: %f, location_altitude: %@, location_horizontal_accuracy: %@, location_timestamp: %@, model: %@, region_number: %@, region_type: %@, region_size: %@", [NSDate date], [NSDate date], [self getBatteryLevel], eventType, eventCoords.latitude, eventCoords.longitude, currentLocation.coordinate.latitude, currentLocation.coordinate.longitude, [[UIDevice currentDevice] localizedModel], regionName ? regionName : @"N/A"];
+}
 
 - (void)locationManager:(CLLocationManager *)manager monitoringDidFailForRegion:(CLRegion *)region withError:(NSError *)error {
 	NSString *event = [NSString stringWithFormat:@"monitoringDidFailForRegion %@: %@", region.identifier, error];
@@ -360,38 +404,38 @@
  A new annotation is created to represent the region and then the application starts monitoring the new region.
  */
 - (IBAction)addRegion {
-//	if ([CLLocationManager regionMonitoringAvailable]) {
-//		// Create a new region based on the center of the map view.
-//		CLLocationCoordinate2D coord = CLLocationCoordinate2DMake(regionsMapView.centerCoordinate.latitude, regionsMapView.centerCoordinate.longitude);
-//		CLRegion *newRegion = [[CLRegion alloc] initCircularRegionWithCenter:coord 
+	if ([CLLocationManager regionMonitoringAvailable]) {
+		// Create a new region based on the center of the map view.
+		CLLocationCoordinate2D coord = CLLocationCoordinate2DMake(regionsMapView.centerCoordinate.latitude, regionsMapView.centerCoordinate.longitude);
+		CLRegion *newRegion = [[CLRegion alloc] initCircularRegionWithCenter:coord 
 //																	  radius:1000.0
-//																  identifier:[NSString stringWithFormat:@"%f, %f", regionsMapView.centerCoordinate.latitude, regionsMapView.centerCoordinate.longitude]];
-//		
-//		// Create an annotation to show where the region is located on the map.
-//		RegionAnnotation *myRegionAnnotation = [[RegionAnnotation alloc] initWithCLRegion:newRegion];
-//		myRegionAnnotation.coordinate = newRegion.center;
-//		myRegionAnnotation.radius = newRegion.radius;
-//		
-//		[regionsMapView addAnnotation:myRegionAnnotation];
-//		
-//		[myRegionAnnotation release];
-//		
-//		// Start monitoring the newly created region.
+                                                                      radius:30.0
+																  identifier:[NSString stringWithFormat:@"%f, %f", regionsMapView.centerCoordinate.latitude, regionsMapView.centerCoordinate.longitude]];
+		
+		// Create an annotation to show where the region is located on the map.
+		RegionAnnotation *myRegionAnnotation = [[RegionAnnotation alloc] initWithCLRegion:newRegion];
+		myRegionAnnotation.coordinate = newRegion.center;
+		myRegionAnnotation.radius = newRegion.radius;
+		
+		[regionsMapView addAnnotation:myRegionAnnotation];
+		
+		[myRegionAnnotation release];
+		
+		// Start monitoring the newly created region.
 //		[locationManager startMonitoringForRegion:newRegion desiredAccuracy:kCLLocationAccuracyBest];
-        
-//    CLRegion *newRegion = [self monitorRegionAtCoordinates:CLLocationCoordinate2DMake(regionsMapView.centerCoordinate.latitude, regionsMapView.centerCoordinate.longitude)];
+        [locationManager startMonitoringForRegion:newRegion];
 		
         // Adding place to ACS
-//    if (newRegion) {
-//        [self addPlace:newRegion.identifier withCoordinate:newRegion.center];
-//    }
+    if (newRegion) {
+        [self addPlace:newRegion.identifier withCoordinate:newRegion.center];
+    }
     
         
-//		[newRegion release];
-//	}
-//	else {
-//		NSLog(@"Region monitoring is not available.");
-//	}
+		[newRegion release];
+	}
+	else {
+		FLog(@"Region monitoring is not available.");
+	}
 }
 
 //- (CLRegion*)monitorRegionAtCoordinates:(CLLocationCoordinate2D)coord {
@@ -425,7 +469,7 @@
 //        return [newRegion autorelease];
 //    }
 //	else {
-//		NSLog(@"Region monitoring is not available.");
+//		FLog(@"Region monitoring is not available.");
 //        return nil;
 //	}
 //}
@@ -438,9 +482,36 @@
         
         if ([tagName isEqualToString:@"small"]) {
             radius = 125.0;
+
+//            radius = 250.0;
+//            regionCountSmall++;
+//            if (regionCountSmall % 2 != 0) {
+//                return nil;
+//            }
         } else if ([tagName isEqualToString:@"large"]) {
             radius = 2500;
-//            identifier = [NSString stringWithFormat:@"L%@", identifier];
+
+//            radius = 5000;
+//            regionCountLarge++;
+//            if (regionCountLarge % 2 != 0) {
+//                return nil;
+//            }
+        } else if ([tagName isEqualToString:@"test3regions"]) {
+            radius = 125;
+            
+            //            radius = 5000;
+            //            regionCountLarge++;
+            //            if (regionCountLarge % 2 != 0) {
+            //                return nil;
+            //            }
+        } else if ([tagName isEqualToString:@"test3regionsL"]) {
+            radius = 500;
+            
+            //            radius = 5000;
+            //            regionCountLarge++;
+            //            if (regionCountLarge % 2 != 0) {
+            //                return nil;
+            //            }
         }
         
         CLRegion *newRegion = [[CLRegion alloc] initCircularRegionWithCenter:coord
@@ -464,7 +535,7 @@
         return [newRegion autorelease];
     }
 	else {
-		NSLog(@"Region monitoring is not available.");
+		FLog(@"Region monitoring is not available.");
         return nil;
 	}
 }
@@ -479,11 +550,50 @@
     
 //    [self getPlacesAroundCoordinate:CLLocationCoordinate2DMake(37.4149, -122.2065) withTag:@"small"];
     
-    [self getPlacesAroundCoordinate:locationManager.location.coordinate withTag:@"large"];
+    // May need to call this to start
+//    [self getPlacesAroundCoordinate:locationManager.location.coordinate withTag:@"large"];
 //    [self stopMonitoringAllRegions];
+    [self getPlacesAroundCoordinate:locationManager.location.coordinate withTag:@"test3regions"];
+    
+    
+//    [self logStatus:@"test"];
 }
 
 #pragma mark Utils
+
+- (NSString*) getDevice
+{
+    return [NSString stringWithFormat:@"MODEL: %@", [[UIDevice currentDevice] model]];
+}
+
+- (NSString*) getBatteryLevel
+{
+    float batteryLevel = [UIDevice currentDevice].batteryLevel;
+    if (batteryLevel < 0.0) {
+        // -1.0 means battery state is UIDeviceBatteryStateUnknown
+        //        self.levelLabel.text = NSLocalizedString(@"Unknown", @"");
+//        return @"BATTERY LEVEL: Unknown";
+        return @"Unknown";
+    }
+    else {
+        static NSNumberFormatter *numberFormatter = nil;
+        if (numberFormatter == nil) {
+            numberFormatter = [[NSNumberFormatter alloc] init];
+            [numberFormatter setNumberStyle:NSNumberFormatterPercentStyle];
+            [numberFormatter setMaximumFractionDigits:6];
+        }
+        
+        NSNumber *levelObj = [NSNumber numberWithFloat:batteryLevel];
+        //        self.levelLabel.text = [numberFormatter stringFromNumber:levelObj];
+//        return [NSString stringWithFormat:@"BATTERY LEVEL: %@", levelObj];
+        return [NSString stringWithFormat:@"%@", levelObj];;
+    }
+}
+
+- (void)updateBatteryLevel
+{
+    FLog([self getBatteryLevel]);
+}
 
 - (void)addAnnotationToMap:(RegionAnnotation*)anno {
     if ([anno.title hasPrefix:@"L"]) {
@@ -576,8 +686,19 @@
     [request startAsynchronous];
 }
 
-- (void)logStatus {
+- (void)logStatus:(NSString*)stat {
+    NSString *status = [NSString stringWithFormat:@"%@ %@ %@",
+                        stat,
+                        [self getDevice],
+                        [self getBatteryLevel]];
+    FLog(@"%@",status);
     
+    // UNCOMMENT TO SEND UPDATES TO ACS
+    NSMutableDictionary *paramDict = [NSMutableDictionary dictionaryWithCapacity:1];
+    [paramDict setObject:[NSString stringWithFormat:@"%@ %@",[NSDate date],status] forKey:@"message"];
+    CCRequest *request = [[CCRequest alloc] initWithDelegate:self httpMethod:@"POST" baseUrl:@"statuses/create.json" paramDict:paramDict];
+    [request startAsynchronous];
+    [request release];
 }
 
 - (void)addPlace:(NSString*)name withCoordinate:(CLLocationCoordinate2D)coord {
@@ -585,7 +706,7 @@
     [paramDict setObject:name forKey:@"name"];
     [paramDict setObject:[NSString stringWithFormat:@"%lf", coord.latitude] forKey:@"latitude"];
     [paramDict setObject:[NSString stringWithFormat:@"%lf", coord.longitude] forKey:@"longitude"];
-    [paramDict setObject:@"large" forKey:@"tags"];
+    [paramDict setObject:@"test3regions" forKey:@"tags"];
     CCRequest *request = [[CCRequest alloc] initWithDelegate:self httpMethod:@"POST" baseUrl:@"places/create.json" paramDict:paramDict];
     [request startAsynchronous];
     [request release];
@@ -611,7 +732,8 @@
 - (void)getPlacesAroundCoordinate:(CLLocationCoordinate2D)coord withTag:(NSString*)tagName {
     NSString *lat = [NSString stringWithFormat:@"%lf", coord.latitude];
     NSString *lon = [NSString stringWithFormat:@"%lf", coord.longitude];
-    NSLog(@"Getting '%@' Regions around: %@, %@", tagName, lat, lon);
+    
+    FLog(@"Getting '%@' Regions around: %@, %@", tagName, lat, lon);
     
     NSMutableDictionary *paramDict = [NSMutableDictionary dictionaryWithCapacity:1];
     [paramDict setObject:lat forKey:@"latitude"];
@@ -626,6 +748,9 @@
     } else if ([tagName isEqualToString:@"large"]) {
         [paramDict setObject:@"5" forKey:@"per_page"];
         [paramDict setObject:@"10" forKey:@"distance"];
+    } else if ([tagName isEqualToString:@"test3regions"]) {
+        [paramDict setObject:@"5" forKey:@"per_page"];
+        [paramDict setObject:@"40" forKey:@"distance"];
     }
 
     
@@ -649,54 +774,71 @@
 #pragma mark CCRequest delegate methods
 -(void)ccrequest:(CCRequest *)request didSucceed:(CCResponse *)response
 {
-    NSLog(@"###### Success for method: %@", response.meta.methodName);
+//    FLog(@"###### Success for method: %@", response.meta.methodName);
     
     NSArray *regions = [[locationManager monitoredRegions] allObjects];
     
     if ([response.meta.methodName isEqualToString:@"loginUser"]) {
-//        if ([regions count] == 0) {
-        
-//            [self getPlacesAroundCoordinate:CLLocationCoordinate2DMake(37.4149, -122.2065) setRegions:YES];
-            
-            [self getPlacesAroundCoordinate:locationManager.location.coordinate withTag:@"large"];
-//        }
+        // BUGBUG: re-add for tracking
+//        [self getPlacesAroundCoordinate:locationManager.location.coordinate withTag:@"large"];
+        [self getPlacesAroundCoordinate:locationManager.location.coordinate withTag:@"test3regions"];
     } else if ([response.meta.methodName isEqualToString:@"searchPlaces"]) {
         NSArray *places = [response getObjectsOfType:[CCPlace class]];
-        NSLog(@"Received %d places.", places.count);
+        
+        FLog(@"Received %d %@ places.", places.count, [request.userInfo objectForKey:@"tagName"]);
         
         if ([[request.userInfo objectForKey:@"tagName"] isEqualToString:@"small"]) {
-            NSLog(@"Received small region response");
+            FLog(@"Received small region response");
             
             [self stopMonitoringSmallRegions];
             
             for (int i = 0; i < [places count]; i++) {
                 CCPlace *place = [places objectAtIndex:i];
-                NSLog(@"Adding Small Region: %@", place.name);
+                
+                FLog(@"Adding Small Region: %@", place.name);
+                
                 [self monitorRegionAtCoordinates:place.location.coordinate withName:place.name withTag:@"small"];
             }
             addingSmallRegions = NO;
             smallRegionsAdded = YES;
         } else if ([[request.userInfo objectForKey:@"tagName"] isEqualToString:@"large"]) {
-            NSLog(@"Received large region response");
+            FLog(@"Received large region response");
             
             [self stopMonitoringAllRegions];
             for (int i = 0; i < [places count]; i++) {
                 CCPlace *place = [places objectAtIndex:i];
-                NSLog(@"Adding Large Region: %@", place.name);
+                
+                FLog(@"Adding Large Region: %@", place.name);
+                
                 [self monitorRegionAtCoordinates:place.location.coordinate withName:place.name withTag:@"large"];
             }
+        } else if ([[request.userInfo objectForKey:@"tagName"] isEqualToString:@"test3regions"]) {
+            [self stopMonitoringAllRegions];
+            for (int i = 0; i < [places count]; i++) {
+                CCPlace *place = [places objectAtIndex:i];
+                
+                FLog(@"Adding `test3regions` Region: %@", place.name);
+                
+                [self monitorRegionAtCoordinates:place.location.coordinate withName:[NSString stringWithFormat:@"%@ S", place.name] withTag:@"test3regions"];
+                
+                // add large regions
+                CLLocationCoordinate2D coord = place.location.coordinate;
+                coord.latitude = coord.latitude + 0.000001;
+                coord.longitude = coord.longitude + 0.000001;
+                [self monitorRegionAtCoordinates:coord withName:[NSString stringWithFormat:@"%@ L", place.name] withTag:@"test3regionsL"];
+            }
         } else {
-            NSLog(@"Received unknown region response");
+            FLog(@"Received unknown region response");
         }
         
 //        for (int i = 0; i < [places count]; i++) {
 //            CCPlace *place = [places objectAtIndex:i];
-//            NSLog(@"Got Region: %@", place.name);
+//            FLog(@"Got Region: %@", place.name);
 //        }
         
         
 //        if ([request.userInfo objectForKey:@"setRegions"]) {
-//            NSLog(@"Setting regions on map.");
+//            FLog(@"Setting regions on map.");
 //            
 //            for (int i = 0; i < [regions count]; i++) {
 //                CLRegion *region = [regions objectAtIndex:i];
@@ -747,7 +889,9 @@
 		[updatesTableView reloadData];
 	}
     
-    NSLog(@"UPDATE: %@",event);
+//    FLog(@"UPDATE: %@",event);
+    
+    [self logStatus:[NSString stringWithFormat:@"%@",event]];
 //    [self getPlacesAroundCoordinate:CLLocationCoordinate2DMake(37.4149, -122.2065) setRegions:NO];
 }
 

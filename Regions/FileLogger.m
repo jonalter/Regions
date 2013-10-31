@@ -31,6 +31,9 @@
     
     NSString *message = [[NSString alloc] initWithFormat:format arguments:ap];
     NSLog(message);
+//    message = [NSString stringWithFormat:@"%@ %@", [NSDate date], message];
+//    [logFile writeData:[[[NSString stringWithFormat:@"%@ %@", [NSDate date], message] stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding]];
+    
     [logFile writeData:[[message stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding]];
     [logFile synchronizeFile];
     
