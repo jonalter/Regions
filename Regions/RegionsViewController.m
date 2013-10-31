@@ -52,6 +52,7 @@
 #import "Cocoafish.h"
 #import "SettingsViewController.h"
 #import "FileLogger.h"
+#include <sys/utsname.h>
 
 @implementation RegionsViewController
 
@@ -351,7 +352,7 @@
 //    }
 }
 
-- (NSString*)logEventType:(NSString*)eventType eventCoords:(CLLocationCoordinate2D)eventCoords currentLocation:(CLLocation)currentLocation region:(CLRegion*)region
+- (NSString*)logEventType:(NSString*)eventType eventCoords:(CLLocationCoordinate2D)eventCoords currentLocation:(CLLocation*)currentLocation region:(CLRegion*)region
 {
     // <timestamp1>, <timestamp2>, battery_level: <battery level>, event_type: <ENTER|EXIT|UPDATE>, latitude1: <latitude1>, longitude1: <longitude1>, latitude2: <latitude2>, longitude2: <longitude2>, model: <model string>
     // Region Number, size, coords
@@ -362,12 +363,34 @@
 //    horizontalAccuracy
 //    timestamp
     
-//    NSNumber *regionNumber =
-//    NSString *regionType = 
-    NSNumber *regionSize = [NSNumber numberWithFloat:region.radius*2.0];
+//    ^([0-9])\s([a-zA-Z])
+    NSString *regionName;
+    NSString *regionNumber = @"n/a";
+    NSString *regionType = @"n/a";
+    NSNumber *regionSize = [NSNumber numberWithInt:-1];
+    
+    if (region) {
+        regionName = region.identifier;
+//        NSString *regionName = @"0 l";
+        NSError *error = NULL;
+        NSRegularExpression *exp = [NSRegularExpression regularExpressionWithPattern:@"([0-9])\\s([a-zA-Z])" options:NSRegularExpressionCaseInsensitive error:&error];
+        
+        if (error) {
+            NSLog(@"%@", error);
+        } else {
+            NSTextCheckingResult *result = [exp firstMatchInString:regionName options:NSMatchingAnchored range:NSMakeRange(0, [regionName length])];
+            
+            if (result) {
+                regionNumber = [regionName substringWithRange:[result rangeAtIndex:1]];
+                regionType = [regionName substringWithRange:[result rangeAtIndex:2]];
+            }
+        }
+    }
+    
+    regionSize = [NSNumber numberWithFloat:region.radius*2.0];
     
     // need to add the rest of the args
-    return [NSString stringWithFormat:@"%@, %@, battery_level: %@, event_type: %@, latitude1: %f, longitude1: %f, latitude2: %f, longitude2: %f, location_altitude: %@, location_horizontal_accuracy: %@, location_timestamp: %@, model: %@, region_number: %@, region_type: %@, region_size: %@", [NSDate date], [NSDate date], [self getBatteryLevel], eventType, eventCoords.latitude, eventCoords.longitude, currentLocation.coordinate.latitude, currentLocation.coordinate.longitude, [[UIDevice currentDevice] localizedModel], regionName ? regionName : @"N/A"];
+    return [NSString stringWithFormat:@"%@, %@, battery_level: %@, event_type: %@, latitude1: %f, longitude1: %f, latitude2: %f, longitude2: %f, location_altitude: %f, location_horizontal_accuracy: %f, location_timestamp: %@, model: %@, region_number: %@, region_type: %@, region_size: %@", [NSDate date], currentLocation.timestamp, [self getBatteryLevel], eventType, eventCoords.latitude, eventCoords.longitude, currentLocation.coordinate.latitude, currentLocation.coordinate.longitude, currentLocation.altitude, currentLocation.horizontalAccuracy, currentLocation.timestamp, machineName(), regionNumber, regionType, regionSize];
 }
 
 - (void)locationManager:(CLLocationManager *)manager monitoringDidFailForRegion:(CLRegion *)region withError:(NSError *)error {
@@ -561,6 +584,16 @@
 
 #pragma mark Utils
 
+// Machine name taken from http://stackoverflow.com/questions/11197509/ios-iphone-get-device-model-and-make
+NSString* machineName()
+{
+    struct utsname systemInfo;
+    uname(&systemInfo);
+    
+    return [NSString stringWithCString:systemInfo.machine
+                              encoding:NSUTF8StringEncoding];
+}
+
 - (NSString*) getDevice
 {
     return [NSString stringWithFormat:@"MODEL: %@", [[UIDevice currentDevice] model]];
@@ -686,11 +719,11 @@
     [request startAsynchronous];
 }
 
-- (void)logStatus:(NSString*)stat {
-    NSString *status = [NSString stringWithFormat:@"%@ %@ %@",
-                        stat,
-                        [self getDevice],
-                        [self getBatteryLevel]];
+- (void)logStatus:(NSString*)status {
+//    NSString *status = [NSString stringWithFormat:@"%@ %@ %@",
+//                        stat,
+//                        [self getDevice],
+//                        [self getBatteryLevel]];
     FLog(@"%@",status);
     
     // UNCOMMENT TO SEND UPDATES TO ACS
